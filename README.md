@@ -1,144 +1,99 @@
-# Long-Term Memory Retrieval Ablation
+# Long-Term Memory Ablation Results
 
-## Objective
+## Summary (Only 10)
 
-This experiment evaluates three design choices for **Long-Term Memory (LTM) retrieval in multi-turn LLM systems**:
+| Query       |   Pre   |   Post  | Overall Judge | Needed Judge | Not-Needed Judge | Recall@5 | Post-filter Recall |
+| ----------- | :-----: | :-----: | ------------: | -----------: | ---------------: | -------: | -----------------: |
+| Multi-turn  |   OFF   |   OFF   |          0.40 |         0.00 |             0.80 |     0.00 |               0.00 |
+| Multi-turn  |   OFF   |    ON   |          0.45 |         0.00 |             0.90 |     0.00 |               0.00 |
+| Multi-turn  |    ON   |   OFF   |          0.45 |         0.00 |             0.90 |     0.00 |               0.00 |
+| Multi-turn  |    ON   |    ON   |          0.45 |         0.00 |             0.90 |     0.00 |               0.00 |
+| **Rewrite** | **OFF** | **OFF** |      **0.70** |     **0.50** |         **0.90** | **0.50** |           **0.50** |
+| Rewrite     |   OFF   |    ON   |          0.60 |         0.30 |             0.90 |     0.50 |               0.30 |
+| Rewrite     |    ON   |   OFF   |          0.45 |         0.00 |             0.90 |     0.00 |               0.00 |
+| Rewrite     |    ON   |    ON   |          0.45 |         0.00 |             0.90 |     0.00 |               0.00 |
 
-1. **Query Rewriting** — raw multi-turn context vs. standalone rewritten query
-2. **Pre-Retrieval Router** — whether to retrieve LTM at all
-3. **Post-Retrieval Self-Router** — whether to filter retrieved memories with a pointwise relevance check
+## Findings
 
-## Dataset
-
-We use **LoCoMo**, a benchmark for long-term conversational memory.
-
-From eligible conversational QA examples, we sample **1,000 base questions** and create two matched conditions from each question:
-
-| Condition             | Current Context                  | Long-Term Memory  | # Samples |
-| --------------------- | -------------------------------- | ----------------- | --------: |
-| **Memory Needed**     | Does not contain answer evidence | Contains evidence |     1,000 |
-| **Memory Not Needed** | Contains answer evidence         | Evidence removed  |     1,000 |
-
-**Total: 2,000 examples**
-
-The question and gold answer are identical between each pair. Only the **location of the answer evidence** changes, allowing us to isolate the effect of LTM retrieval and routing.
+### 1. Query Rewriting is Effective
 
 ```text
-Same Question / Same Answer
-           │
-     ┌─────┴─────┐
-     ▼           ▼
-Memory Needed   Memory Not Needed
-Evidence=LTM    Evidence=Current Context
+Multi-turn → Recall@5 = 0.00, Needed Judge = 0.00
+Rewrite    → Recall@5 = 0.50, Needed Judge = 0.50
 ```
 
-## Pipeline
+Query rewriting substantially improves LTM retrieval and downstream answer quality.
+
+**Best configuration:** `Rewrite + No Pre-Router + No Post-Router`
+
+---
+
+### 2. Pre-Retrieval Router Hurts Performance
+
+With the pre-router enabled:
 
 ```text
-Multi-turn Context + Query
-          │
-          ├── Query Rewrite (optional)
-          ▼
-    Retrieval Query
-          │
-          ├── Pre-Retrieval Router (optional)
-          │       "Do we need LTM?"
-          ▼
-      LTM Retrieval
-        Top-K = 5
-          │
-          ├── Pointwise Self-Router (optional)
-          │       "Is this memory relevant?"
-          ▼
-     Answer Generation
+Pre-router Recall = 0.10
+Pre-router Specificity = 1.00
 ```
 
-## Models
+The router successfully avoids unnecessary retrieval, but incorrectly blocks **90% of queries that actually require memory**.
 
-* **LLM:** Qwen3-8B via OpenRouter
-* **Retriever:** `BAAI/bge-base-en-v1.5`
-* **Similarity:** Cosine similarity
-* **Top-K:** 5
-* **Temperature:** 0
-
-Qwen3-8B is used for query rewriting, routing, relevance checking, and answer generation.
-
-## Ablation
-
-We evaluate all combinations of:
-
-| Query      | Pre-Router | Post-Router |
-| ---------- | :--------: | :---------: |
-| Multi-turn |     OFF    |     OFF     |
-| Multi-turn |     ON     |     OFF     |
-| Multi-turn |     OFF    |      ON     |
-| Multi-turn |     ON     |      ON     |
-| Rewrite    |     OFF    |     OFF     |
-| Rewrite    |     ON     |     OFF     |
-| Rewrite    |     OFF    |      ON     |
-| Rewrite    |     ON     |      ON     |
-
-Each configuration is evaluated on all **2,000 examples**.
-
-## Evaluation
-
-### Query Rewriting
-
-Compare:
+As a result:
 
 ```text
-Multi-turn + No Router
-vs.
-Rewrite + No Router
+Needed Judge: 0.50 → 0.00
+Recall@5:     0.50 → 0.00
 ```
 
-Metrics: **Recall@5, QA Accuracy, F1**
+The current pre-router is therefore too conservative.
 
-### Pre-Retrieval Router
+---
 
-Compare:
+### 3. Post-Retrieval Self-Router Also Hurts
+
+For the rewrite configuration:
 
 ```text
-Rewrite + Pre-Router OFF
-vs.
-Rewrite + Pre-Router ON
+Without Post-Router:
+Needed Judge       = 0.50
+Post-filter Recall = 0.50
+
+With Post-Router:
+Needed Judge       = 0.30
+Post-filter Recall = 0.30
 ```
 
-Metrics:
-
-* Memory-needed accuracy
-* Memory-not-needed accuracy
-* Router recall: `P(Retrieve | Memory Needed)`
-* Unnecessary retrieval: `P(Retrieve | Memory Not Needed)`
-
-Router recall is especially important because a false negative prevents the downstream retriever from accessing required evidence.
-
-### Post-Retrieval Self-Router
-
-Compare:
+The post-router reduces the average number of memories from:
 
 ```text
-Rewrite + Pre-Router
-vs.
-Rewrite + Pre-Router + Post-Router
+5.00 → 0.55
 ```
 
-Metrics:
+but also filters out relevant evidence.
 
-* QA Accuracy / F1
-* Evidence recall after filtering
-* Average number of retained memories
+Therefore, the current pointwise relevance filter is overly aggressive.
 
-## Main Questions
+---
 
-The experiment ultimately answers:
+## Conclusion
+
+The best pipeline in this experiment is:
 
 ```text
-1. Does query rewriting improve LTM retrieval over raw multi-turn context?
-
-2. Can a pre-retrieval router avoid unnecessary LTM retrieval
-   without hurting memory-dependent queries?
-
-3. Does pointwise relevance filtering improve answer quality
-   after retrieval?
+Multi-turn Conversation
+        ↓
+Query Rewrite
+        ↓
+LTM Retrieval Top-5
+        ↓
+Answer Generation
 ```
+
+Current results suggest:
+
+* **Query Rewrite:** Recommended
+* **Pre-Retrieval Router:** Not recommended
+* **Post-Retrieval Self-Router:** Not recommended
+
+The main issue with both routers is **low recall on memory-required queries**, causing relevant evidence to be discarded before answer generation.
