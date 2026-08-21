@@ -1,99 +1,88 @@
-# Long-Term Memory Ablation Results
+# Long-Term Memory Retrieval Ablation Results
 
-## Summary (Only 10)
+## Results
 
-| Query       |   Pre   |   Post  | Overall Judge | Needed Judge | Not-Needed Judge | Recall@5 | Post-filter Recall |
-| ----------- | :-----: | :-----: | ------------: | -----------: | ---------------: | -------: | -----------------: |
-| Multi-turn  |   OFF   |   OFF   |          0.40 |         0.00 |             0.80 |     0.00 |               0.00 |
-| Multi-turn  |   OFF   |    ON   |          0.45 |         0.00 |             0.90 |     0.00 |               0.00 |
-| Multi-turn  |    ON   |   OFF   |          0.45 |         0.00 |             0.90 |     0.00 |               0.00 |
-| Multi-turn  |    ON   |    ON   |          0.45 |         0.00 |             0.90 |     0.00 |               0.00 |
-| **Rewrite** | **OFF** | **OFF** |      **0.70** |     **0.50** |         **0.90** | **0.50** |           **0.50** |
-| Rewrite     |   OFF   |    ON   |          0.60 |         0.30 |             0.90 |     0.50 |               0.30 |
-| Rewrite     |    ON   |   OFF   |          0.45 |         0.00 |             0.90 |     0.00 |               0.00 |
-| Rewrite     |    ON   |    ON   |          0.45 |         0.00 |             0.90 |     0.00 |               0.00 |
+| Query       |   Pre   |   Post  | Recall@5 | Post Recall | Pre Recall | Pre Specificity | SQuAD Empty |
+| ----------- | :-----: | :-----: | -------: | ----------: | ---------: | --------------: | ----------: |
+| Multi-turn  |   OFF   |   OFF   |     0.03 |        0.03 |       1.00 |            0.00 |        0.00 |
+| Multi-turn  |   OFF   |    ON   |     0.03 |        0.02 |       1.00 |            0.00 |        0.98 |
+| Multi-turn  |    ON   |   OFF   |     0.03 |        0.03 |       0.95 |            0.99 |        0.99 |
+| Multi-turn  |    ON   |    ON   |     0.03 |        0.02 |       0.95 |            0.99 |        1.00 |
+| **Rewrite** | **OFF** | **OFF** | **0.49** |    **0.49** |       1.00 |            0.00 |        0.00 |
+| Rewrite     |   OFF   |    ON   |     0.49 |        0.43 |       1.00 |            0.00 |        0.96 |
+| **Rewrite** |  **ON** | **OFF** | **0.47** |    **0.47** |   **0.95** |        **0.99** |    **0.99** |
+| Rewrite     |    ON   |    ON   |     0.47 |        0.41 |       0.95 |            0.99 |        1.00 |
 
-## Findings
+## Key Findings
 
-### 1. Query Rewriting is Effective
-
-```text
-Multi-turn → Recall@5 = 0.00, Needed Judge = 0.00
-Rewrite    → Recall@5 = 0.50, Needed Judge = 0.50
-```
-
-Query rewriting substantially improves LTM retrieval and downstream answer quality.
-
-**Best configuration:** `Rewrite + No Pre-Router + No Post-Router`
-
----
-
-### 2. Pre-Retrieval Router Hurts Performance
-
-With the pre-router enabled:
+### 1. Query Rewrite: Strongly Recommended
 
 ```text
-Pre-router Recall = 0.10
-Pre-router Specificity = 1.00
+Multi-turn Recall@5 : 0.03
+Rewrite Recall@5    : 0.49
 ```
 
-The router successfully avoids unnecessary retrieval, but incorrectly blocks **90% of queries that actually require memory**.
+Query rewriting improves retrieval recall by **+46%p**. Raw multi-turn context is highly ineffective as a direct embedding query.
 
-As a result:
+### 2. Pre-Router: Effective
 
 ```text
-Needed Judge: 0.50 → 0.00
-Recall@5:     0.50 → 0.00
+Memory-needed Recall : 0.95
+SQuAD Specificity    : 0.99
+Unnecessary Retrieval: 0.01
 ```
 
-The current pre-router is therefore too conservative.
+The pre-router correctly allows **95%** of necessary retrievals while blocking **99%** of unnecessary SQuAD retrievals.
 
----
-
-### 3. Post-Retrieval Self-Router Also Hurts
-
-For the rewrite configuration:
+With rewrite, Recall@5 decreases only slightly:
 
 ```text
-Without Post-Router:
-Needed Judge       = 0.50
-Post-filter Recall = 0.50
-
-With Post-Router:
-Needed Judge       = 0.30
-Post-filter Recall = 0.30
+0.49 → 0.47
 ```
 
-The post-router reduces the average number of memories from:
+while unnecessary retrieval drops:
 
 ```text
-5.00 → 0.55
+1.00 → 0.01
 ```
 
-but also filters out relevant evidence.
+Therefore, the **pre-router provides a strong efficiency/quality trade-off**.
 
-Therefore, the current pointwise relevance filter is overly aggressive.
+### 3. Post-Router: Not Recommended
 
----
+With rewrite:
+
+```text
+Recall@5           : 0.49
+Post-filter Recall : 0.43
+```
+
+The post-router successfully removes irrelevant SQuAD memories (`96–100%` empty), but also removes relevant LoCoMo evidence.
+
+With Pre + Post:
+
+```text
+0.47 → 0.41
+```
+
+Thus, the pointwise post-filter introduces unnecessary recall loss.
 
 ## Conclusion
 
-The best pipeline in this experiment is:
+Recommended pipeline:
 
 ```text
 Multi-turn Conversation
         ↓
+Pre-Retrieval Router
+        ↓
 Query Rewrite
         ↓
-LTM Retrieval Top-5
-        ↓
-Answer Generation
+Top-5 LTM Retrieval
 ```
 
-Current results suggest:
+* **Query Rewrite:** ✅ Strongly beneficial
+* **Pre-Router:** ✅ Recommended
+* **Post-Router:** ❌ Not recommended
 
-* **Query Rewrite:** Recommended
-* **Pre-Retrieval Router:** Not recommended
-* **Post-Retrieval Self-Router:** Not recommended
-
-The main issue with both routers is **low recall on memory-required queries**, causing relevant evidence to be discarded before answer generation.
+The best practical configuration is **`Rewrite + Pre-Router + No Post-Router`**, retaining `0.47 Recall@5` while reducing unnecessary retrieval from `100%` to `1%`.
