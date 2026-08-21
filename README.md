@@ -1,88 +1,125 @@
-# Long-Term Memory Retrieval Ablation Results
+# Long-Term Memory Retrieval + QA Ablation
 
 ## Results
 
-| Query       |   Pre   |   Post  | Recall@5 | Post Recall | Pre Recall | Pre Specificity | SQuAD Empty |
-| ----------- | :-----: | :-----: | -------: | ----------: | ---------: | --------------: | ----------: |
-| Multi-turn  |   OFF   |   OFF   |     0.03 |        0.03 |       1.00 |            0.00 |        0.00 |
-| Multi-turn  |   OFF   |    ON   |     0.03 |        0.02 |       1.00 |            0.00 |        0.98 |
-| Multi-turn  |    ON   |   OFF   |     0.03 |        0.03 |       0.95 |            0.99 |        0.99 |
-| Multi-turn  |    ON   |    ON   |     0.03 |        0.02 |       0.95 |            0.99 |        1.00 |
-| **Rewrite** | **OFF** | **OFF** | **0.49** |    **0.49** |       1.00 |            0.00 |        0.00 |
-| Rewrite     |   OFF   |    ON   |     0.49 |        0.43 |       1.00 |            0.00 |        0.96 |
-| **Rewrite** |  **ON** | **OFF** | **0.47** |    **0.47** |   **0.95** |        **0.99** |    **0.99** |
-| Rewrite     |    ON   |    ON   |     0.47 |        0.41 |       0.95 |            0.99 |        1.00 |
+| Query       |   Pre  |   Post  | LoCoMo EM | LoCoMo F1 | SQuAD EM |  SQuAD F1 | Recall@5 | Post Recall | Pre Recall | Pre Specificity |
+| ----------- | :----: | :-----: | --------: | --------: | -------: | --------: | -------: | ----------: | ---------: | --------------: |
+| Multi-turn  |   OFF  |   OFF   |      0.01 |     0.052 |     0.79 |     0.851 |     0.03 |        0.03 |       1.00 |            0.00 |
+| Multi-turn  |   OFF  |    ON   |      0.01 |     0.034 |     0.85 |     0.893 |     0.03 |        0.02 |       1.00 |            0.00 |
+| Multi-turn  |   ON   |   OFF   |      0.02 |     0.066 |     0.85 |     0.893 |     0.03 |        0.03 |       0.95 |            0.99 |
+| Multi-turn  |   ON   |    ON   |      0.01 |     0.034 |     0.85 |     0.893 |     0.03 |        0.02 |       0.95 |            0.99 |
+| **Rewrite** |   OFF  |   OFF   |  **0.15** | **0.322** |     0.76 |     0.848 | **0.50** |    **0.50** |       1.00 |            0.00 |
+| Rewrite     |   OFF  |    ON   |  **0.18** |     0.276 | **0.85** | **0.893** | **0.50** |        0.44 |       1.00 |            0.00 |
+| **Rewrite** | **ON** | **OFF** |      0.15 | **0.322** | **0.85** | **0.893** |     0.48 |    **0.48** |   **0.95** |        **0.99** |
+| Rewrite     |   ON   |    ON   |  **0.18** |     0.276 | **0.85** | **0.893** |     0.48 |        0.42 |   **0.95** |        **0.99** |
 
 ## Key Findings
 
-### 1. Query Rewrite: Strongly Recommended
+### 1. Query Rewrite — Strongly Recommended
+
+Retrieval 성능이 크게 향상됐다.
 
 ```text
-Multi-turn Recall@5 : 0.03
-Rewrite Recall@5    : 0.49
+Recall@5
+Multi-turn : 0.03
+Rewrite    : 0.50
 ```
 
-Query rewriting improves retrieval recall by **+46%p**. Raw multi-turn context is highly ineffective as a direct embedding query.
-
-### 2. Pre-Router: Effective
+LoCoMo QA 성능도 크게 개선됐다.
 
 ```text
-Memory-needed Recall : 0.95
-SQuAD Specificity    : 0.99
-Unnecessary Retrieval: 0.01
+LoCoMo F1
+Multi-turn : 0.052
+Rewrite    : 0.322
 ```
 
-The pre-router correctly allows **95%** of necessary retrievals while blocking **99%** of unnecessary SQuAD retrievals.
+→ **Multi-turn 전체를 retrieval query로 사용하는 것보다 standalone query rewrite가 명확하게 우수하다.**
 
-With rewrite, Recall@5 decreases only slightly:
+---
+
+### 2. Pre-Router — Recommended
+
+Pre-router 성능:
 
 ```text
-0.49 → 0.47
+Recall      = 0.95
+Specificity = 0.99
 ```
 
-while unnecessary retrieval drops:
+즉,
+
+* 필요한 LTM retrieval의 **95%를 통과**
+* 필요 없는 retrieval의 **99%를 차단**
+
+Rewrite 기준 retrieval 손실도 작다.
+
+```text
+Recall@5
+Pre OFF : 0.50
+Pre ON  : 0.48
+```
+
+반면 unnecessary retrieval은:
 
 ```text
 1.00 → 0.01
 ```
 
-Therefore, the **pre-router provides a strong efficiency/quality trade-off**.
+SQuAD EM도 `0.76 → 0.85`로 개선된다.
 
-### 3. Post-Router: Not Recommended
+→ **2%p의 Recall 손실로 불필요한 retrieval을 거의 완전히 제거하므로 Pre-router 사용이 유리하다.**
 
-With rewrite:
+---
 
-```text
-Recall@5           : 0.49
-Post-filter Recall : 0.43
-```
+### 3. Post-Router — Trade-off
 
-The post-router successfully removes irrelevant SQuAD memories (`96–100%` empty), but also removes relevant LoCoMo evidence.
-
-With Pre + Post:
+Post-router는 불필요한 memory를 매우 잘 제거한다.
 
 ```text
-0.47 → 0.41
+SQuAD Post Empty Rate
+Pre OFF + Post ON : 0.96
+Pre ON  + Post ON : 1.00
 ```
 
-Thus, the pointwise post-filter introduces unnecessary recall loss.
+하지만 relevant evidence도 일부 제거한다.
+
+```text
+Rewrite + Pre
+
+Post OFF : Recall = 0.48
+Post ON  : Recall = 0.42
+```
+
+LoCoMo에서는:
+
+```text
+             EM      F1
+Post OFF    0.15    0.322
+Post ON     0.18    0.276
+```
+
+→ EM은 소폭 상승하지만 **F1과 retrieval recall은 하락**한다. 따라서 Post-router가 완전히 나쁜 것은 아니지만, 이미 좋은 Pre-router가 있다면 추가적인 이득은 제한적이다.
 
 ## Conclusion
 
-Recommended pipeline:
+추천 pipeline:
 
 ```text
 Multi-turn Conversation
         ↓
-Pre-Retrieval Router
+Pre-Router
         ↓
 Query Rewrite
         ↓
-Top-5 LTM Retrieval
+LTM Retrieval Top-5
+        ↓
+Answer Generation
 ```
 
-* **Query Rewrite:** ✅ Strongly beneficial
-* **Pre-Router:** ✅ Recommended
-* **Post-Router:** ❌ Not recommended
+**최종 판단**
 
-The best practical configuration is **`Rewrite + Pre-Router + No Post-Router`**, retaining `0.47 Recall@5` while reducing unnecessary retrieval from `100%` to `1%`.
+* **Query Rewrite:** ✅ 사용
+* **Pre-Router:** ✅ 사용
+* **Post-Router:** ⚠️ Optional / 기본적으로 제외
+
+가장 균형 잡힌 설정은 **`Rewrite + Pre-Router + No Post-Router`**다. `Recall@5 = 0.48`을 유지하면서 불필요한 retrieval을 `1%`까지 낮추고, LoCoMo F1도 가장 높은 `0.322`를 유지한다.
